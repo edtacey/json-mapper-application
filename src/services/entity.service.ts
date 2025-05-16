@@ -806,10 +806,15 @@ export class EntityService {
       });
     }
 
+    // Get existing metadata or create default
+    const metadata = sourceEntity.metadata || {
+      source: 'user_defined'
+    };
+
     // Update source entity
     return this.update(sourceEntityId, {
       metadata: {
-        ...sourceEntity.metadata,
+        ...metadata,
         linkedEntities
       }
     });
@@ -840,10 +845,15 @@ export class EntityService {
       link => !(link.entityId === targetEntityId && link.direction === direction)
     );
 
+    // Get existing metadata or create default
+    const metadata = sourceEntity.metadata || {
+      source: 'user_defined'
+    };
+
     // Update source entity
     return this.update(sourceEntityId, {
       metadata: {
-        ...sourceEntity.metadata,
+        ...metadata,
         linkedEntities: updatedLinks
       }
     });

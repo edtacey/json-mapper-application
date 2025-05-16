@@ -4,25 +4,27 @@
 
 This document outlines the future development plans for JsonMapper, organized by release milestones.
 
-## Current State (v1.0.0)
+## Current State (v1.2.0)
 
-The JsonMapper MVP is feature-complete with:
+The JsonMapper is feature-complete with:
 - Entity schema generation
 - Visual mapping editor
 - Comprehensive value mapping system
 - Code generation for Azure and Node-RED
 - LLM integration for suggestions
+- Abstracted model support with entity linking
+- YAML/JSON schema format options
 
 ## Release Plan
 
-### v1.1.0 - Enhanced User Experience (Q1 2024)
-- [ ] Improved error handling and recovery
-- [ ] Keyboard shortcuts for common operations
-- [ ] Undo/redo functionality
-- [ ] Dark mode theme
-- [ ] Improved mobile responsiveness
-- [ ] Bulk operations for mappings
-- [ ] Export/import complete projects
+### v1.3.0 - Advanced Schema Mapping (Q2 2024)
+- [ ] Schema inheritance implementation
+- [ ] Versioned schemas with migration paths
+- [ ] Schema diff visualization
+- [ ] Schema validation rules engine
+- [ ] External schema registry integration
+- [ ] GraphQL schema support
+- [ ] OpenAPI schema compatibility
 
 ### v1.2.0 - Database Backend (Q2 2024)
 - [ ] PostgreSQL backend option

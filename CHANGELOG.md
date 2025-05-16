@@ -5,6 +5,38 @@ All notable changes to the JsonMapper project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2025-05-16
+
+### Added
+- YAML/JSON schema format support
+  - Toggle control for switching between formats
+  - Schema format persistence in entity model
+  - Format conversion utilities
+  - Documentation for format options
+- Enhanced abstracted model capabilities
+  - Inbound and outbound abstraction flags
+  - Entity linking functionality
+  - Reference and inheritance link types
+  - Link management API endpoints
+  - Visual indicators for linked entities
+- New frontend components
+  - SchemaFormatToggle component
+  - Enhanced AbstractedFlag component
+  - AbstractedFlagsGroup component
+  - Switch UI component
+
+### Changed
+- Entity data model to include schemaFormat, inboundAbstracted, and outboundAbstracted properties
+- Entity service to support schema format selection and entity linking
+- API endpoints to handle new abstraction and linking features
+- Entity controller to expose new functionality
+
+### Enhanced
+- Entity validation to enforce abstraction rules
+- Link management with create, read, and delete operations
+- Documentation with comprehensive schema abstraction guide
+- Migration support for existing entities
+
 ## [1.1.0] - 2025-05-15
 
 ### Added
