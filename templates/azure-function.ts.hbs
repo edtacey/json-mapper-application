@@ -1,0 +1,277 @@
+import { AzureFunction, Context, HttpRequest } from "@azure/functions";
+import { ServiceBusClient } from "@azure/service-bus";
+import { EventHubProducerClient } from "@azure/event-hubs";
+
+interface {{entityName}}Entity {{inboundInterface}}
+
+interface {{entityName}}Output {{outboundInterface}}
+
+{{#if outputConfig.changeEventConfig.enabled}}
+interface ChangeEvent {
+  id: string;
+  entityId: string;
+  eventType: string;
+  timestamp: string;
+  data: {
+    new: any;
+    old?: any;
+    changes?: FieldChange[];
+  };
+  metadata?: any;
+}
+
+interface FieldChange {
+  field: string;
+  oldValue: any;
+  newValue: any;
+  operation: 'add' | 'update' | 'delete';
+}
+{{/if}}
+
+const httpTrigger: AzureFunction = async function (context: Context, req: HttpRequest): Promise<void> {
+  context.log('{{entityName}} processor triggered');
+
+  try {
+    const input: {{entityName}}Entity = req.body;
+    const output: {{entityName}}Output = {} as {{entityName}}Output;
+
+    // Apply mappings
+    {{#each mappings}}
+    {{#if active}}
+    {{#ifEquals transformation "direct"}}
+    output["{{target}}"] = input["{{source}}"];
+    {{/ifEquals}}
+    {{#ifEquals transformation "template"}}
+    output["{{target}}"] = `{{template}}`.replace(/\$\{([^}]+)\}/g, (match, fieldPath) => {
+      return getNestedValue(input, fieldPath) || '';
+    });
+    {{/ifEquals}}
+    {{#ifEquals transformation "function"}}
+    output["{{target}}"] = (function(value: any, data: any) { {{customFunction}} })(input["{{source}}"], input);
+    {{/ifEquals}}
+    {{#ifEquals transformation "value-mapping"}}
+    // Apply value mapping: {{name}}
+    output["{{target}}"] = applyValueMapping(input["{{source}}"], "{{valueMapId}}");
+    {{/ifEquals}}
+    {{/if}}
+    {{/each}}
+
+    // Add system fields
+    output.processedAt = new Date().toISOString();
+    output.correlationId = req.headers['x-correlation-id'] || generateId();
+    output.entityType = "{{entityName}}";
+
+    {{#if outputConfig.upsertConfig.enabled}}
+    // Handle upsert logic
+    const existingRecord = await findExistingRecord(output, [{{#each outputConfig.upsertConfig.uniqueFields}}"{{this}}"{{#unless @last}}, {{/unless}}{{/each}}]);
+    
+    if (existingRecord) {
+      {{#ifEquals outputConfig.upsertConfig.conflictResolution "update"}}
+      Object.assign(existingRecord, output);
+      output = existingRecord;
+      {{/ifEquals}}
+      {{#ifEquals outputConfig.upsertConfig.conflictResolution "merge"}}
+      output = deepMerge(existingRecord, output);
+      {{/ifEquals}}
+      {{#ifEquals outputConfig.upsertConfig.conflictResolution "skip"}}
+      context.res = {
+        status: 200,
+        body: { message: "Record already exists, skipping", data: existingRecord }
+      };
+      return;
+      {{/ifEquals}}
+      {{#ifEquals outputConfig.upsertConfig.conflictResolution "error"}}
+      context.res = {
+        status: 409,
+        body: { error: "Record already exists" }
+      };
+      return;
+      {{/ifEquals}}
+    }
+    {{/if}}
+
+    {{#if outputConfig.changeEventConfig.enabled}}
+    // Publish change event
+    const event: ChangeEvent = {
+      id: generateId(),
+      entityId: "{{entityName}}_" + (output.id || generateId()),
+      eventType: "{{outputConfig.changeEventConfig.eventType}}",
+      timestamp: new Date().toISOString(),
+      data: {
+        new: output,
+        {{#if outputConfig.changeEventConfig.includeOldValues}}
+        old: existingRecord || null,
+        changes: existingRecord ? detectChanges(existingRecord, output) : []
+        {{/if}}
+      },
+      {{#if outputConfig.changeEventConfig.includeMetadata}}
+      metadata: {
+        correlationId: output.correlationId,
+        source: "{{entityName}}-processor",
+        version: "{{version}}"
+      }
+      {{/if}}
+    };
+
+    await publishEvent(event, context);
+    {{/if}}
+
+    // Send to output queue
+    await sendToQueue(output, context);
+
+    context.res = {
+      status: 200,
+      body: { message: "Success", data: output }
+    };
+
+  } catch (error) {
+    context.log.error('Error processing {{entityName}}:', error);
+    context.res = {
+      status: 500,
+      body: { error: error.message }
+    };
+  }
+};
+
+{{#if outputConfig.changeEventConfig.enabled}}
+async function publishEvent(event: ChangeEvent, context: Context): Promise<void> {
+  {{#if outputConfig.changeEventConfig.targetQueue}}
+  // Publish to Service Bus Queue
+  const sbClient = new ServiceBusClient(process.env.SERVICE_BUS_CONNECTION_STRING!);
+  const sender = sbClient.createSender("{{outputConfig.changeEventConfig.targetQueue}}");
+  
+  await sender.sendMessages({
+    body: event,
+    contentType: "application/json",
+    correlationId: event.metadata?.correlationId
+  });
+  
+  await sender.close();
+  await sbClient.close();
+  {{/if}}
+  
+  {{#if outputConfig.changeEventConfig.targetTopic}}
+  // Publish to Event Hub
+  const producer = new EventHubProducerClient(
+    process.env.EVENT_HUB_CONNECTION_STRING!,
+    "{{outputConfig.changeEventConfig.targetTopic}}"
+  );
+  
+  await producer.sendBatch([{
+    body: event,
+    contentType: "application/json",
+    correlationId: event.metadata?.correlationId
+  }]);
+  
+  await producer.close();
+  {{/if}}
+}
+
+function detectChanges(oldData: any, newData: any): FieldChange[] {
+  const changes: FieldChange[] = [];
+  
+  const allKeys = new Set([...Object.keys(oldData), ...Object.keys(newData)]);
+  
+  for (const key of allKeys) {
+    const oldValue = oldData[key];
+    const newValue = newData[key];
+    
+    if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
+      let operation: 'add' | 'update' | 'delete' = 'update';
+      
+      if (oldValue === undefined) operation = 'add';
+      else if (newValue === undefined) operation = 'delete';
+      
+      changes.push({
+        field: key,
+        oldValue,
+        newValue,
+        operation
+      });
+    }
+  }
+  
+  return changes;
+}
+{{/if}}
+
+{{#if outputConfig.upsertConfig.enabled}}
+async function findExistingRecord(data: any, uniqueFields: string[]): Promise<any | null> {
+  // This would typically query your database or storage
+  // Implementation depends on your storage solution
+  // For now, returning null to indicate no existing record
+  return null;
+}
+
+function deepMerge(target: any, source: any): any {
+  const result = { ...target };
+  
+  for (const key in source) {
+    if (source.hasOwnProperty(key)) {
+      if (typeof source[key] === 'object' && source[key] !== null) {
+        if (typeof result[key] === 'object' && result[key] !== null) {
+          result[key] = deepMerge(result[key], source[key]);
+        } else {
+          result[key] = source[key];
+        }
+      } else {
+        result[key] = source[key];
+      }
+    }
+  }
+  
+  return result;
+}
+{{/if}}
+
+function getNestedValue(obj: any, path: string): any {
+  const keys = path.split('.');
+  let current = obj;
+  
+  for (const key of keys) {
+    if (current === null || current === undefined) {
+      return undefined;
+    }
+    current = current[key];
+  }
+  
+  return current;
+}
+
+function generateId(): string {
+  return `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
+async function sendToQueue(data: any, context: Context): Promise<void> {
+  const sbClient = new ServiceBusClient(process.env.SERVICE_BUS_CONNECTION_STRING!);
+  const sender = sbClient.createSender("{{entityName}}-output");
+  
+  await sender.sendMessages({
+    body: data,
+    contentType: "application/json",
+    correlationId: data.correlationId
+  });
+  
+  await sender.close();
+  await sbClient.close();
+}
+
+{{#if valueMappings}}
+// Value mapping functions
+const valueMappings = {
+  {{#each valueMappings}}
+  "{{id}}": {{json this}},
+  {{/each}}
+};
+
+function applyValueMapping(value: any, mappingId: string): any {
+  const mapping = valueMappings[mappingId];
+  if (!mapping) return value;
+  
+  // Implementation based on mapping type
+  // This is a simplified version
+  return mapping.mappings[value] || mapping.defaultValue || value;
+}
+{{/if}}
+
+export default httpTrigger;

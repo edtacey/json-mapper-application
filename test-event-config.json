@@ -1,0 +1,8 @@
+{
+  "enabled": true,
+  "eventType": "OrderChanged",
+  "includeOldValues": true,
+  "includeMetadata": true,
+  "targetQueue": "order-events",
+  "format": "cloudevents"
+}
