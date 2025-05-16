@@ -9,6 +9,9 @@ export interface EntitySchema {
   updatedAt?: string;
   inboundSchema: JsonSchema;
   outboundSchema: JsonSchema;
+  schemaFormat?: 'json' | 'yaml';  // Format for schema storage and editing
+  inboundAbstracted?: boolean;  // Whether inbound schema is abstracted and can be linked to
+  outboundAbstracted?: boolean; // Whether outbound schema is abstracted and can be linked to
   outputConfig?: OutputConfiguration;
   metadata?: {
     source: string;
@@ -21,6 +24,12 @@ export interface EntitySchema {
     };
     schemaHistory?: SchemaVersion[];
     uniquenessConstraints?: UniquenessConstraint[];  // Required when isAbstractedModel is true
+    linkedEntities?: Array<{
+      entityId: string;
+      direction: 'inbound' | 'outbound';
+      linkType: 'reference' | 'inheritance';
+      mappingId?: string;
+    }>;
   };
 }
 

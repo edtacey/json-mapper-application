@@ -24,7 +24,17 @@ export class EntityController {
     // Generate entity from payload sample
     this.router.post('/generate', async (req: Request, res: Response) => {
       try {
-        const { samplePayload, entityName, description, outputSchema, outputConfig, abstracted } = req.body;
+        const { 
+          samplePayload, 
+          entityName, 
+          description, 
+          outputSchema, 
+          outputConfig, 
+          abstracted,
+          schemaFormat,
+          inboundAbstracted,
+          outboundAbstracted
+        } = req.body;
         
         // Generate entity schema from sample
         const entitySchema = await this.entityService.generateFromSample(
@@ -33,7 +43,12 @@ export class EntityController {
           description,
           outputSchema,
           outputConfig,
-          abstracted
+          {
+            abstracted,
+            schemaFormat: schemaFormat || 'json', 
+            inboundAbstracted: inboundAbstracted || false,
+            outboundAbstracted: outboundAbstracted || false
+          }
         );
         
         // Use LLM to enhance schema with intelligent defaults
@@ -65,7 +80,15 @@ export class EntityController {
     // Import entity from external API
     this.router.post('/import', async (req: Request, res: Response) => {
       try {
-        const { apiEndpoint, method, headers, sampleRequest } = req.body;
+        const { 
+          apiEndpoint, 
+          method, 
+          headers, 
+          sampleRequest, 
+          schemaFormat,
+          inboundAbstracted,
+          outboundAbstracted
+        } = req.body;
         
         // Call external API
         const response = await this.entityService.callExternalAPI({
@@ -78,7 +101,12 @@ export class EntityController {
         // Generate schema from response
         const entitySchema = await this.entityService.generateFromAPIResponse(
           response.data,
-          req.body.entityName
+          req.body.entityName,
+          {
+            schemaFormat: schemaFormat || 'json',
+            inboundAbstracted: inboundAbstracted || false,
+            outboundAbstracted: outboundAbstracted || false
+          }
         );
         
         // Save and return
@@ -302,6 +330,85 @@ export class EntityController {
           mappings: importedMappings,
           valueMappings: importedValueMappings
         });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // Link two entities (abstracted model feature)
+    this.router.post('/:id/link', async (req: Request, res: Response) => {
+      try {
+        const { targetEntityId, direction, linkType, mappingId } = req.body;
+        
+        if (!targetEntityId || !direction || !linkType) {
+          return res.status(400).json({ 
+            error: 'Missing required parameters: targetEntityId, direction, and linkType are required' 
+          });
+        }
+        
+        const entity = await this.entityService.linkEntities(
+          req.params.id,
+          targetEntityId,
+          direction,
+          linkType,
+          mappingId
+        );
+        
+        res.json({ success: true, entity });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+    
+    // Unlink entities (abstracted model feature)
+    this.router.delete('/:id/link/:targetId/:direction', async (req: Request, res: Response) => {
+      try {
+        const { targetId, direction } = req.params;
+        
+        const entity = await this.entityService.unlinkEntities(
+          req.params.id,
+          targetId,
+          direction as 'inbound' | 'outbound'
+        );
+        
+        res.json({ success: true, entity });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+    
+    // Get linked entities
+    this.router.get('/:id/links', async (req: Request, res: Response) => {
+      try {
+        const direction = req.query.direction as 'inbound' | 'outbound' | undefined;
+        
+        const linkedEntities = await this.entityService.getLinkedEntities(
+          req.params.id,
+          direction
+        );
+        
+        res.json({ success: true, linkedEntities });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // Update entity schema format
+    this.router.put('/:id/schema-format', async (req: Request, res: Response) => {
+      try {
+        const { schemaFormat, inboundAbstracted, outboundAbstracted } = req.body;
+        
+        if (!schemaFormat || !['json', 'yaml'].includes(schemaFormat)) {
+          return res.status(400).json({ error: 'Invalid schema format. Must be "json" or "yaml"' });
+        }
+        
+        const entity = await this.entityService.update(req.params.id, {
+          schemaFormat,
+          inboundAbstracted,
+          outboundAbstracted
+        });
+        
+        res.json({ success: true, entity });
       } catch (error: any) {
         res.status(500).json({ error: error.message });
       }

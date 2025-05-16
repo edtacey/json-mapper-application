@@ -1,5 +1,7 @@
 // MCP (Model Context Protocol) Server Implementation
 // This module provides enhanced context management for LLM interactions
+// DISABLED: This module is currently disabled due to incomplete implementation
+/* 
 
 import { EventEmitter } from 'events';
 import { 
@@ -372,4 +374,56 @@ export class MCPServer extends EventEmitter {
     entityId: string;
     currentConfig?: any;
   }): Promise<any> {
-    const entity = await this.entityService.get
+    const entity = await this.entityService.getById(params.entityId);
+    if (!entity) {
+      throw new Error('Entity not found');
+    }
+
+    const optimizedConfig = await this.llmService.optimizeEventConfig(
+      entity,
+      params.currentConfig || entity.eventConfig,
+      this.context
+    );
+
+    return optimizedConfig;
+  }
+
+  // Merge context updates
+  private mergeContext(updates: Partial<MCPContext>): void {
+    this.context = {
+      ...this.context,
+      ...updates,
+      systemMetadata: {
+        ...this.context.systemMetadata,
+        ...(updates.systemMetadata || {}),
+        lastUpdated: new Date().toISOString()
+      }
+    };
+  }
+
+  // Setup WebSocket server
+  private async setupWebSocketServer(): Promise<void> {
+    // Placeholder for WebSocket server setup
+    // Implementation would depend on the WebSocket library choice
+    console.log('WebSocket server setup skipped - implementation pending');
+  }
+
+  // Setup event listeners
+  private setupEventListeners(): void {
+    this.entityService.on('entityChanged', (entity) => {
+      this.loadContext().catch(err => console.error('Error reloading context:', err));
+      this.emit('contextChanged', { type: 'entity', entity });
+    });
+
+    this.mappingService.on('mappingChanged', (mapping) => {
+      this.loadContext().catch(err => console.error('Error reloading context:', err));
+      this.emit('contextChanged', { type: 'mapping', mapping });
+    });
+
+    this.valueMappingService.on('valueMappingChanged', (valueMapping) => {
+      this.loadContext().catch(err => console.error('Error reloading context:', err));
+      this.emit('contextChanged', { type: 'valueMapping', valueMapping });
+    });
+  }
+}
+*/

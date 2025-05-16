@@ -15,7 +15,19 @@ export class EntityService {
     this.mappingService = new MappingService();
   }
 
-  async generateFromSample(samplePayload: any, entityName: string, description?: string, outputSchema?: any, outputConfig?: any, abstracted?: boolean): Promise<EntitySchema> {
+  async generateFromSample(
+    samplePayload: any, 
+    entityName: string, 
+    description?: string, 
+    outputSchema?: any, 
+    outputConfig?: any, 
+    options?: {
+      abstracted?: boolean, 
+      schemaFormat?: 'json' | 'yaml',
+      inboundAbstracted?: boolean,
+      outboundAbstracted?: boolean
+    }
+  ): Promise<EntitySchema> {
     // Analyze payload structure
     const structure = this.analyzeStructure(samplePayload);
     
@@ -27,7 +39,10 @@ export class EntityService {
       id: this.generateId(),
       name: entityName,
       description,
-      abstracted,
+      abstracted: options?.abstracted,
+      schemaFormat: options?.schemaFormat || 'json',
+      inboundAbstracted: options?.inboundAbstracted || false,
+      outboundAbstracted: options?.outboundAbstracted || false,
       version: '1.0.0',
       createdAt: new Date().toISOString(),
       inboundSchema: jsonSchema,
@@ -43,7 +58,15 @@ export class EntityService {
     return entitySchema;
   }
 
-  async generateFromAPIResponse(response: any, entityName: string): Promise<EntitySchema> {
+  async generateFromAPIResponse(
+    response: any, 
+    entityName: string, 
+    options?: {
+      schemaFormat?: 'json' | 'yaml',
+      inboundAbstracted?: boolean,
+      outboundAbstracted?: boolean
+    }
+  ): Promise<EntitySchema> {
     // Extract schema from API response
     const responseSchema = this.schemaGenerator.generate(response);
     
@@ -54,6 +77,9 @@ export class EntityService {
       createdAt: new Date().toISOString(),
       inboundSchema: responseSchema,
       outboundSchema: this.generateDefaultOutboundSchema(entityName),
+      schemaFormat: options?.schemaFormat || 'json',
+      inboundAbstracted: options?.inboundAbstracted || false,
+      outboundAbstracted: options?.outboundAbstracted || false,
       metadata: {
         source: 'api_import',
         sampleData: response
@@ -536,6 +562,7 @@ export class EntityService {
   async validateAbstractedModel(entity: EntitySchema): Promise<{ valid: boolean; errors: string[] }> {
     const errors: string[] = [];
 
+    // Validate isAbstractedModel
     if (entity.isAbstractedModel) {
       // Check if at least one uniqueness constraint is defined
       const constraints = entity.metadata?.uniquenessConstraints || [];
@@ -556,6 +583,30 @@ export class EntityService {
             errors.push(`Field '${field}' in constraint '${constraint.name}' not found in schema`);
           }
         }
+      }
+    }
+
+    // Validate inboundAbstracted flag
+    if (entity.inboundAbstracted) {
+      // Check if the inbound schema has proper identifiers or references
+      if (!entity.inboundSchema.properties || Object.keys(entity.inboundSchema.properties).length === 0) {
+        errors.push('Inbound schema must have properties defined when marked as abstracted');
+      }
+    }
+
+    // Validate outboundAbstracted flag
+    if (entity.outboundAbstracted) {
+      // Check if the outbound schema has proper identifiers or references
+      if (!entity.outboundSchema.properties || Object.keys(entity.outboundSchema.properties).length === 0) {
+        errors.push('Outbound schema must have properties defined when marked as abstracted');
+      }
+      
+      // Ensure there's at least one identifier field
+      const hasIdentifierField = entity.outboundSchema.properties && 
+        (entity.outboundSchema.properties.id || entity.outboundSchema.properties.entityId);
+      
+      if (!hasIdentifierField) {
+        errors.push('Outbound schema must have an identifier field (id or entityId) when marked as abstracted');
       }
     }
 
@@ -692,5 +743,146 @@ export class EntityService {
     }
 
     return imported;
+  }
+
+  /**
+   * Link entities together using abstracted schemas
+   * @param sourceEntityId The source entity ID
+   * @param targetEntityId The target entity ID
+   * @param direction Whether to link inbound or outbound schema
+   * @param linkType Type of link (reference or inheritance)
+   * @param mappingId Optional mapping ID for reference links
+   */
+  async linkEntities(
+    sourceEntityId: string, 
+    targetEntityId: string, 
+    direction: 'inbound' | 'outbound',
+    linkType: 'reference' | 'inheritance',
+    mappingId?: string
+  ): Promise<EntitySchema> {
+    // Validate source entity
+    const sourceEntity = await this.getById(sourceEntityId);
+    if (!sourceEntity) {
+      throw new Error(`Source entity ${sourceEntityId} not found`);
+    }
+
+    // Validate target entity
+    const targetEntity = await this.getById(targetEntityId);
+    if (!targetEntity) {
+      throw new Error(`Target entity ${targetEntityId} not found`);
+    }
+
+    // Validate target is abstracted properly
+    if (direction === 'inbound' && !targetEntity.inboundAbstracted) {
+      throw new Error('Target entity inbound schema is not marked as abstracted');
+    }
+    if (direction === 'outbound' && !targetEntity.outboundAbstracted) {
+      throw new Error('Target entity outbound schema is not marked as abstracted');
+    }
+
+    // Create or update linked entities array
+    const linkedEntities = sourceEntity.metadata?.linkedEntities || [];
+    
+    // Check if link already exists
+    const existingLinkIndex = linkedEntities.findIndex(
+      link => link.entityId === targetEntityId && link.direction === direction
+    );
+    
+    if (existingLinkIndex >= 0) {
+      // Update existing link
+      linkedEntities[existingLinkIndex] = {
+        entityId: targetEntityId,
+        direction,
+        linkType,
+        mappingId
+      };
+    } else {
+      // Add new link
+      linkedEntities.push({
+        entityId: targetEntityId,
+        direction,
+        linkType,
+        mappingId
+      });
+    }
+
+    // Update source entity
+    return this.update(sourceEntityId, {
+      metadata: {
+        ...sourceEntity.metadata,
+        linkedEntities
+      }
+    });
+  }
+
+  /**
+   * Remove a link between entities
+   * @param sourceEntityId The source entity ID
+   * @param targetEntityId The target entity ID
+   * @param direction The link direction
+   */
+  async unlinkEntities(
+    sourceEntityId: string,
+    targetEntityId: string,
+    direction: 'inbound' | 'outbound'
+  ): Promise<EntitySchema> {
+    // Validate source entity
+    const sourceEntity = await this.getById(sourceEntityId);
+    if (!sourceEntity) {
+      throw new Error(`Source entity ${sourceEntityId} not found`);
+    }
+
+    // Get linked entities
+    const linkedEntities = sourceEntity.metadata?.linkedEntities || [];
+    
+    // Filter out the link to remove
+    const updatedLinks = linkedEntities.filter(
+      link => !(link.entityId === targetEntityId && link.direction === direction)
+    );
+
+    // Update source entity
+    return this.update(sourceEntityId, {
+      metadata: {
+        ...sourceEntity.metadata,
+        linkedEntities: updatedLinks
+      }
+    });
+  }
+
+  /**
+   * Get all entities that are linked to a specific entity
+   * @param entityId The entity ID
+   * @param direction Optional direction filter
+   */
+  async getLinkedEntities(
+    entityId: string,
+    direction?: 'inbound' | 'outbound'
+  ): Promise<Array<{ entity: EntitySchema, linkInfo: any }>> {
+    // Validate entity
+    const entity = await this.getById(entityId);
+    if (!entity) {
+      throw new Error(`Entity ${entityId} not found`);
+    }
+
+    const linkedEntities = entity.metadata?.linkedEntities || [];
+    const result = [];
+
+    // Filter by direction if specified
+    const filteredLinks = direction 
+      ? linkedEntities.filter(link => link.direction === direction)
+      : linkedEntities;
+
+    // Get detailed info for each linked entity
+    for (const link of filteredLinks) {
+      const linkedEntity = await this.getById(link.entityId);
+      if (linkedEntity) {
+        result.push({
+          entity: linkedEntity,
+          linkInfo: link
+        });
+      }
+    }
+
+    return result;
   }
 }
