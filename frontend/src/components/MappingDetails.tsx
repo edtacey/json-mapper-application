@@ -37,7 +37,9 @@ export const MappingDetails: React.FC<MappingDetailsProps> = ({
     { value: 'function', label: 'Function' },
     { value: 'value-mapping', label: 'Value Mapping' },
     { value: 'aggregate', label: 'Aggregate' },
-    { value: 'conditional', label: 'Conditional' }
+    { value: 'conditional', label: 'Conditional' },
+    { value: 'sub-child-merge', label: 'Sub Child Merge' },
+    { value: 'sub-child-replace', label: 'Sub Child Replace' }
   ];
 
   const handleSave = () => {
@@ -63,7 +65,7 @@ export const MappingDetails: React.FC<MappingDetailsProps> = ({
   };
 
   const updateField = (field: string, value: any) => {
-    setEditedMapping(prev => ({
+    setEditedMapping((prev: any) => ({
       ...prev,
       [field]: value
     }));
