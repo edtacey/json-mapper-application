@@ -304,13 +304,25 @@ export class EntityService {
     if (entity.outputConfig?.upsertConfig?.enabled && existingData) {
       const upsertConfig = entity.outputConfig.upsertConfig;
       
+      // Process uniqueFields to handle array items
+      // If a field uses the [] notation to reference array items,
+      // we need to handle it specially for record existence check
+      console.log('Checking record existence with unique fields:', upsertConfig.uniqueFields);
+      
       // Check if record exists based on unique fields
       const exists = this.checkRecordExists(output.output, existingData, upsertConfig.uniqueFields);
       
       if (exists) {
+        // When conflict is found, handle according to configuration
         switch (upsertConfig.conflictResolution) {
           case 'update':
             return { ...existingData, ...output.output, _operation: 'update' };
+          case 'merge':
+            // Deep merge for nested structures including arrays
+            return { 
+              ...this.deepMerge(existingData, output.output, upsertConfig.mergeStrategy || 'shallow'),
+              _operation: 'merge' 
+            };
           case 'skip':
             return { ...existingData, _operation: 'skip' };
           case 'error':
@@ -322,6 +334,33 @@ export class EntityService {
     }
     
     return { ...output.output, _operation: 'insert' };
+  }
+  
+  // Helper for merging objects during upsert
+  private deepMerge(target: any, source: any, strategy: 'shallow' | 'deep' = 'shallow'): any {
+    // For shallow merge, just combine top-level properties
+    if (strategy === 'shallow') {
+      return { ...target, ...source };
+    }
+    
+    // For deep merge, recursively combine nested objects and arrays
+    const output = { ...target };
+    
+    if (source && typeof source === 'object' && !Array.isArray(source)) {
+      Object.keys(source).forEach(key => {
+        if (source[key] && typeof source[key] === 'object') {
+          if (key in target) {
+            output[key] = this.deepMerge(target[key], source[key], strategy);
+          } else {
+            output[key] = source[key];
+          }
+        } else {
+          output[key] = source[key];
+        }
+      });
+    }
+    
+    return output;
   }
 
   async generateChangeEvent(
@@ -374,19 +413,102 @@ export class EntityService {
       return uniqueFields.every(field => {
         const newValue = this.getNestedValue(newData, field);
         const existingValue = this.getNestedValue(record, field);
+        
+        // Handle array cases (could be array of objects with unique identifiers)
+        if (Array.isArray(newValue) && Array.isArray(existingValue)) {
+          // For arrays, we check if they contain matching items based on identifier fields
+          // This handles the case where arrays might have the same items but in different order
+          if (newValue.length !== existingValue.length) return false;
+          
+          // For arrays of objects, we need special handling
+          if (newValue.length > 0 && typeof newValue[0] === 'object') {
+            const isMatch = this.compareArraysOfObjects(newValue, existingValue);
+            return isMatch;
+          }
+          
+          // For arrays of primitives, simple check
+          return JSON.stringify(newValue.sort()) === JSON.stringify(existingValue.sort());
+        }
+        
+        // Handle object comparison
+        if (typeof newValue === 'object' && typeof existingValue === 'object' &&
+            newValue !== null && existingValue !== null &&
+            !Array.isArray(newValue) && !Array.isArray(existingValue)) {
+          return JSON.stringify(newValue) === JSON.stringify(existingValue);
+        }
+        
+        // Handle primitive values
         return newValue === existingValue;
       });
     });
   }
+  
+  private compareArraysOfObjects(arr1: any[], arr2: any[]): boolean {
+    // This is a simple implementation that might need to be extended
+    // depending on the specific uniqueness requirements
+    // Here we assume objects in arrays are considered equal if all their properties match
+    
+    if (arr1.length !== arr2.length) return false;
+    
+    // Sort arrays (non-mutating) to ensure order doesn't affect comparison
+    const sorted1 = [...arr1].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+    const sorted2 = [...arr2].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+    
+    for (let i = 0; i < sorted1.length; i++) {
+      if (JSON.stringify(sorted1[i]) !== JSON.stringify(sorted2[i])) {
+        return false;
+      }
+    }
+    
+    return true;
+  }
 
   private getNestedValue(obj: any, path: string): any {
+    if (!obj || !path) return undefined;
+  
+    // Handle array notation in path
+    if (path.includes('[]')) {
+      const [arrayPath, ...rest] = path.split('[]');
+      const remainingPath = rest.join('[]');
+      
+      // Get the array
+      let arrayValue;
+      if (arrayPath === '') {
+        // Root is array
+        arrayValue = obj;
+      } else {
+        const keys = arrayPath.split('.');
+        let current = obj;
+        
+        for (const key of keys) {
+          if (current === null || current === undefined) return undefined;
+          current = current[key];
+        }
+        
+        arrayValue = current;
+      }
+      
+      // Return the array itself if that's what we're looking for
+      if (!remainingPath || remainingPath === '') return arrayValue;
+      
+      // Otherwise, we need to get a property from each array item
+      if (Array.isArray(arrayValue)) {
+        // For uniqueness checking, we return array of values from each item
+        const itemPath = remainingPath.startsWith('.') ? 
+          remainingPath.substring(1) : remainingPath;
+          
+        return arrayValue.map(item => this.getNestedValue(item, itemPath));
+      }
+      
+      return undefined;
+    }
+    
+    // Handle regular dot notation
     const keys = path.split('.');
     let current = obj;
     
     for (const key of keys) {
-      if (current === null || current === undefined) {
-        return undefined;
-      }
+      if (current === null || current === undefined) return undefined;
       current = current[key];
     }
     
@@ -546,9 +668,26 @@ export class EntityService {
 
     const errors: string[] = [];
     const schemaFields = this.extractSchemaFields(entity.outboundSchema);
+    
+    console.log('Available schema fields for upsert validation:', schemaFields);
 
     for (const field of fields) {
-      if (!schemaFields.includes(field)) {
+      // Check if this is a nested array path using our extended syntax
+      // Allow fields that match array item paths (with [] notation)
+      const isValid = schemaFields.some(schemaField => {
+        // Direct match
+        if (schemaField === field) return true;
+        
+        // Support for array items in unique fields
+        // Example: if field is TradeLines[].LineID and schema has TradeLines[].LineID
+        if (field.includes('[]') && schemaField.startsWith(field.split('[]')[0])) {
+          return true;
+        }
+        
+        return false;
+      });
+      
+      if (!isValid) {
         errors.push(`Field '${field}' not found in output schema`);
       }
     }
@@ -708,6 +847,8 @@ export class EntityService {
   private extractSchemaFields(schema: JsonSchema, prefix: string = ''): string[] {
     const fields: string[] = [];
 
+    if (!schema || !schema.type) return fields;
+
     if (schema.type === 'object' && schema.properties) {
       for (const [key, prop] of Object.entries(schema.properties)) {
         const fullPath = prefix ? `${prefix}.${key}` : key;
@@ -715,8 +856,22 @@ export class EntityService {
 
         if ((prop as JsonSchema).type === 'object') {
           fields.push(...this.extractSchemaFields(prop as JsonSchema, fullPath));
+        } 
+        else if ((prop as JsonSchema).type === 'array' && (prop as JsonSchema).items) {
+          // Add the array itself
+          // For array items, use the [] notation to indicate array elements
+          const arrayItemPath = `${fullPath}[]`;
+          
+          // Extract schema fields from array items
+          const itemSchemaFields = this.extractSchemaFields((prop as JsonSchema).items as JsonSchema, arrayItemPath);
+          fields.push(...itemSchemaFields);
         }
       }
+    } 
+    else if (schema.type === 'array' && schema.items) {
+      // For root array
+      const arrayItemPath = prefix ? `${prefix}[]` : '[]';
+      fields.push(...this.extractSchemaFields(schema.items as JsonSchema, arrayItemPath));
     }
 
     return fields;

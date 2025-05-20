@@ -26,7 +26,7 @@ export const CodeGenerator: React.FC = () => {
   const generateMutation = useMutation(
     (data: any) => api.generation.generateEntity(data),
     {
-      onSuccess: (files) => {
+      onSuccess: () => {
         toast.success('Code generated successfully');
         // Could implement download logic here
       },

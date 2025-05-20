@@ -4,12 +4,16 @@ export interface EntitySchema {
   description?: string;
   isAbstractedModel?: boolean;
   abstracted?: boolean;
+  inboundAbstracted?: boolean;
+  outboundAbstracted?: boolean;
+  schemaFormat?: 'json' | 'yaml';
   version: string;
   createdAt: string;
   updatedAt?: string;
   inboundSchema: JsonSchema;
   outboundSchema: JsonSchema;
   outputConfig?: OutputConfiguration;
+  upsertConfig?: UpsertConfiguration;
   metadata?: {
     source: string;
     sampleData?: any;

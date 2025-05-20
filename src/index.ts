@@ -148,7 +148,7 @@ export class Application {
 }
 
 // Environment setup
-const PORT = parseInt(process.env.PORT || '3000', 10);
+const PORT = parseInt(process.env.PORT || '3001', 10);
 
 // Start the application
 const app = new Application(PORT);

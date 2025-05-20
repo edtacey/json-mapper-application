@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>API Connection Test</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 2rem; max-width: 800px; margin: 0 auto; }
+    .card { border: 1px solid #e2e8f0; border-radius: 0.5rem; padding: 1.5rem; margin-bottom: 1rem; }
+    .success { background-color: #f0fff4; border-color: #c6f6d5; }
+    .error { background-color: #fff5f5; border-color: #fed7d7; }
+    pre { background-color: #f7fafc; padding: 1rem; border-radius: 0.25rem; overflow: auto; }
+    button { background-color: #4299e1; color: white; border: none; padding: 0.5rem 1rem; border-radius: 0.25rem; cursor: pointer; }
+    button:hover { background-color: #3182ce; }
+    h1 { color: #2d3748; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <h1>API Connection Test</h1>
+  <p>This page tests whether the frontend can connect to the backend API in the Vite preview environment.</p>
+  
+  <button id="testBtn">Run API Test</button>
+  
+  <div id="healthResult" class="card hidden">
+    <h3>Health Check</h3>
+    <pre id="healthData"></pre>
+  </div>
+  
+  <div id="entitiesResult" class="card hidden">
+    <h3>Entities Endpoint</h3>
+    <pre id="entitiesData"></pre>
+  </div>
+  
+  <div id="errorResult" class="card error hidden">
+    <h3>Error</h3>
+    <pre id="errorData"></pre>
+  </div>
+
+  <script>
+    document.getElementById('testBtn').addEventListener('click', runTests);
+    
+    async function runTests() {
+      try {
+        // Reset previous results
+        document.getElementById('healthResult').classList.add('hidden');
+        document.getElementById('entitiesResult').classList.add('hidden');
+        document.getElementById('errorResult').classList.add('hidden');
+        
+        // 1. Test health endpoint
+        const healthResponse = await fetch('http://localhost:3001/api/health');
+        const healthData = await healthResponse.json();
+        document.getElementById('healthData').textContent = JSON.stringify(healthData, null, 2);
+        document.getElementById('healthResult').classList.remove('hidden');
+        document.getElementById('healthResult').classList.add('success');
+        
+        // 2. Test entities endpoint
+        const entitiesResponse = await fetch('http://localhost:3001/api/entities');
+        const entitiesData = await entitiesResponse.json();
+        document.getElementById('entitiesData').textContent = JSON.stringify({
+          count: entitiesData.entities.length,
+          firstEntityName: entitiesData.entities[0]?.name || 'No entities found',
+          entityIds: entitiesData.entities.map(e => e.id)
+        }, null, 2);
+        document.getElementById('entitiesResult').classList.remove('hidden');
+        document.getElementById('entitiesResult').classList.add('success');
+        
+      } catch (error) {
+        document.getElementById('errorData').textContent = error.toString();
+        document.getElementById('errorResult').classList.remove('hidden');
+      }
+    }
+  </script>
+</body>
+</html>

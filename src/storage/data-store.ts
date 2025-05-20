@@ -26,29 +26,34 @@ export class DataStore {
       await this.initialize();
     }
 
-    const filePath = path.join(this.basePath, `${data.id}.json`);
-    
-    // Add metadata
-    const enrichedData = {
-      ...data,
-      updatedAt: new Date().toISOString(),
-      version: await this.getNextVersion(data.id)
-    };
+    try {
+      const filePath = path.join(this.basePath, `${data.id}.json`);
+      
+      // Add metadata
+      const enrichedData = {
+        ...data,
+        updatedAt: new Date().toISOString(),
+        version: await this.getNextVersion(data.id)
+      };
 
-    // Save to file
-    await fs.writeFile(
-      filePath,
-      JSON.stringify(enrichedData, null, 2),
-      'utf-8'
-    );
+      // Save to file
+      await fs.writeFile(
+        filePath,
+        JSON.stringify(enrichedData, null, 2),
+        'utf-8'
+      );
 
-    // Update cache
-    this.cache.set(data.id, enrichedData);
+      // Update cache
+      this.cache.set(data.id, enrichedData);
 
-    // Save to history
-    await this.saveHistory(enrichedData);
+      // Save to history
+      await this.saveHistory(enrichedData);
 
-    return enrichedData as T;
+      return enrichedData as T;
+    } catch (error) {
+      console.error(`Error saving item ${data.id}:`, error);
+      throw new Error(`Failed to save ${data.id}: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   async get<T>(id: string): Promise<T | null> {
@@ -134,6 +139,7 @@ export class DataStore {
       
       await fs.writeFile(historyFile, JSON.stringify(data, null, 2), 'utf-8');
     } catch (error) {
+      // Just log the error but don't fail the save operation
       console.error('Error saving history:', error);
     }
   }

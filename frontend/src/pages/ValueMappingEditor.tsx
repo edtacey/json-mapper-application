@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Save, Plus, Trash2, Play } from 'lucide-react';
 import Editor from '@monaco-editor/react';
@@ -8,7 +8,6 @@ import { api } from '../services/api';
 
 export const ValueMappingEditor: React.FC = () => {
   const { id: entityId } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   
   const [selectedMapping, setSelectedMapping] = useState<any>(null);

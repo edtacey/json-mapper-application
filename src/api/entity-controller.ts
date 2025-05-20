@@ -186,12 +186,10 @@ export class EntityController {
     // Delete entity
     this.router.delete('/:id', async (req: Request, res: Response) => {
       try {
-        // Delete associated mappings and value mappings first
-        const mappings = await this.mappingService.getByEntityId(req.params.id);
-        for (const mapping of mappings) {
-          await this.mappingService.delete(mapping.id);
-        }
+        // Delete associated mappings using the entity-specific endpoint
+        await this.mappingService.deleteByEntityId(req.params.id);
         
+        // Delete associated value mappings
         const valueMappings = await this.valueMappingService.getByEntityId(req.params.id);
         for (const vm of valueMappings) {
           await this.valueMappingService.delete(vm.id);
@@ -200,6 +198,7 @@ export class EntityController {
         const success = await this.entityService.delete(req.params.id);
         res.json({ success });
       } catch (error: any) {
+        console.error(`Error deleting entity ${req.params.id}:`, error);
         res.status(500).json({ error: error.message });
       }
     });

@@ -40,6 +40,26 @@ export class MappingController {
         res.status(500).json({ error: error.message });
       }
     });
+    
+    // Delete all mappings for an entity
+    this.router.delete('/entity/:entityId', async (req: Request, res: Response) => {
+      try {
+        const mappings = await this.mappingService.getByEntityId(req.params.entityId);
+        
+        // Delete each mapping
+        for (const mapping of mappings) {
+          await this.mappingService.delete(mapping.id);
+        }
+        
+        res.json({ 
+          success: true, 
+          message: `Deleted ${mappings.length} mappings for entity ${req.params.entityId}`,
+          count: mappings.length
+        });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message });
+      }
+    });
 
     // Get a specific mapping
     this.router.get('/:id', async (req: Request, res: Response) => {

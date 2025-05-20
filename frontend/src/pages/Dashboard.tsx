@@ -16,8 +16,8 @@ export const Dashboard: React.FC = () => {
 
   const stats = {
     entities: entities?.length || 0,
-    mappings: entities?.reduce((acc, entity) => acc + (entity.mappingCount || 0), 0) || 0,
-    valueMappings: entities?.reduce((acc, entity) => acc + (entity.valueMappingCount || 0), 0) || 0,
+    mappings: entities?.reduce((acc: number, entity: any) => acc + (entity.mappingCount || 0), 0) || 0,
+    valueMappings: entities?.reduce((acc: number, entity: any) => acc + (entity.valueMappingCount || 0), 0) || 0,
     status: health?.status || 'unknown'
   };
 
@@ -73,7 +73,7 @@ export const Dashboard: React.FC = () => {
           <div className="p-6 text-center text-gray-500">Loading...</div>
         ) : entities && entities.length > 0 ? (
           <div className="divide-y divide-gray-200">
-            {entities.slice(0, 5).map((entity) => (
+            {entities.slice(0, 5).map((entity: any) => (
               <EntityRow key={entity.id} entity={entity} />
             ))}
           </div>

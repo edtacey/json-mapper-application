@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 const axiosInstance = axios.create({
   baseURL: API_BASE_URL,
@@ -90,6 +90,35 @@ export const api = {
     validateAbstractedModel: async (id: string) => {
       const response = await axiosInstance.post(`/entities/${id}/validate-abstracted`);
       return response.data;
+    },
+    
+    // Schema format and abstraction endpoints
+    updateSchemaFormat: async (id: string, data: { schemaFormat: 'json' | 'yaml', inboundAbstracted?: boolean, outboundAbstracted?: boolean }) => {
+      const response = await axiosInstance.put(`/entities/${id}/schema-format`, data);
+      return response.data.entity;
+    },
+    
+    // Upsert configuration
+    updateUpsertConfig: async (id: string, config: any) => {
+      const response = await axiosInstance.put(`/entities/${id}/upsert-config`, { upsertConfig: config });
+      return response.data.entity;
+    },
+    
+    // Entity linking endpoints
+    linkEntity: async (id: string, data: { targetEntityId: string, direction: 'inbound' | 'outbound', linkType: 'reference' | 'inheritance', mappingId?: string }) => {
+      const response = await axiosInstance.post(`/entities/${id}/link`, data);
+      return response.data.entity;
+    },
+    
+    unlinkEntity: async (id: string, targetId: string, direction: 'inbound' | 'outbound') => {
+      const response = await axiosInstance.delete(`/entities/${id}/link/${targetId}/${direction}`);
+      return response.data.entity;
+    },
+    
+    getLinks: async (id: string, direction?: 'inbound' | 'outbound') => {
+      const url = direction ? `/entities/${id}/links?direction=${direction}` : `/entities/${id}/links`;
+      const response = await axiosInstance.get(url);
+      return response.data.linkedEntities;
     }
   },
 
@@ -119,6 +148,16 @@ export const api = {
     delete: async (id: string) => {
       const response = await axiosInstance.delete(`/mappings/${id}`);
       return response.data.success;
+    },
+    
+    deleteAllForEntity: async (entityId: string) => {
+      const response = await axiosInstance.delete(`/mappings/entity/${entityId}`);
+      return response.data.success;
+    },
+    
+    generateDefaults: async (entityId: string) => {
+      const response = await axiosInstance.post(`/mappings/generate-defaults/${entityId}`);
+      return response.data.mappings;
     },
     
     refresh: async (entityId: string, context?: string) => {

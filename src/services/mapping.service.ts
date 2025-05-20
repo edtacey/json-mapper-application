@@ -59,6 +59,18 @@ export class MappingService {
     return this.dataStore.delete(id);
   }
 
+  async deleteByEntityId(entityId: string): Promise<number> {
+    const mappings = await this.getByEntityId(entityId);
+    let deletedCount = 0;
+    
+    for (const mapping of mappings) {
+      const success = await this.dataStore.delete(mapping.id);
+      if (success) deletedCount++;
+    }
+    
+    return deletedCount;
+  }
+
   async generateDefaultMappings(entity: EntitySchema): Promise<Mapping[]> {
     const mappings: Mapping[] = [];
     const inboundFields = this.extractFields(entity.inboundSchema);
